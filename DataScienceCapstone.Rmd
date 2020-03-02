@@ -1,0 +1,218 @@
+---
+title: "MovieLens Project"
+author: "Richa Gautam"
+date: "6/5/2019"
+output: html_document
+---
+#Utilizing the Movielens Database to Predict Movie Preferences
+
+
+```{r setup, include=FALSE echo=FALSE}
+################################
+# Create edx set, validation set
+################################
+
+# Note: this process could take a couple of minutes
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(ggfortify)) install.packages("ggfortify", repos = "http://cran.us.r-project.org")
+if(!require(Metrics)) install.packages("Metrics", repos = "http://cran.us.r-project.org")
+if(!require(scales)) install.packages("scales", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(caret)
+library(data.table)
+library(ggfortify)
+library(Metrics)
+library(scales)
+
+# MovieLens 10M dataset:
+# https://grouplens.org/datasets/movielens/10m/
+# http://files.grouplens.org/datasets/movielens/ml-10m.zip
+
+dl <- tempfile()
+download.file("http://files.grouplens.org/datasets/movielens/ml-10m.zip", dl)
+
+ratings <- fread(text = gsub("::", "\t", readLines(unzip(dl, "ml-10M100K/ratings.dat"))),
+                 col.names = c("userId", "movieId", "rating", "timestamp"))
+
+movies <- str_split_fixed(readLines(unzip(dl, "ml-10M100K/movies.dat")), "\\::", 3)
+colnames(movies) <- c("movieId", "title", "genres")
+movies <- as.data.frame(movies) %>% mutate(movieId = as.numeric(levels(movieId))[movieId],
+                                           title = as.character(title),
+                                           genres = as.character(genres))
+
+movielens <- left_join(ratings, movies, by = "movieId")
+
+# Validation set will be 10% of MovieLens data
+set.seed(1)
+# if using R 3.5 or earlier, use `set.seed(1, sample.kind="Rounding")` instead
+test_index <- createDataPartition(y = movielens$rating, times = 1, p = 0.1, list = FALSE)
+edx <- movielens[-test_index,]
+temp <- movielens[test_index,]
+
+# Make sure userId and movieId in validation set are also in edx set
+validation <- temp %>% 
+  semi_join(edx, by = "movieId") %>%
+  semi_join(edx, by = "userId")
+
+# Add rows removed from validation set back into edx set
+removed <- anti_join(temp, validation)
+edx <- rbind(edx, removed)
+
+rm(dl, ratings, movies, test_index, temp, movielens, removed)
+
+```
+##Introduction
+
+Why do we watch the movies we do? In the era of binge-watching, the answer to this question has largely been "because we watched a similar movie before." Streaming services' algorithms curate our dashboard to recommend movies that they find most likely to appeal to us. This appeal could be based on your bias towards certain genres, or an era, or an actor or a director. I for example will watch anything with Andy Samberg in it. My partner on the other hand is a fan of bad horror movies.
+
+We can therefore hypothesize that people tend to like things based on certain foundational preferences. This insight is hugely useful when trying to predict human behavior. Imagine you are inviting friends over for a movie. What movie should you suggest that will please most of the crowd?
+
+##Overview
+
+In this report, I will outline the steps taken to create a recommendation system given the genre, year, and `r nrow(edx)` user ratings of `r edx %>% group_by(movieId) %>% count() %>% nrow()` unique movies by `r edx %>% group_by(userId) %>% count() %>% nrow()` unique users from the Movielens database.
+
+##Executive Summary
+
+I hypothesized that this problem will require a regression machine learning algorithm, as the dependent variable (variable being predicted; ratings) is continuous, and the independent variables (variable being used to predict; genre, and users, movies) are categorical. Using the xxx machine learning method, I was able to predict movie ratings with xx% accuracy. The root mean squared error (RMSE) was xx. 
+
+##Methods
+
+The dataset was obtained from http://grouplens.org using code provided by the Data Science Capstone course being taught by Harvard Extension school. The final dataset had `r nrow(edx)` observations of `r ncol(edx)` variables - userId, movieId, rating, timestamp, title, and genres.
+
+Of the variables, our independent variables (IVs) were "genres," a character vector, "year," which was extracted from the "title" column, and "userId," an integer vector. Our dependent variable (DV) was "rating," a numeric vector. 
+
+###Pre-processing
+
+The code provided by edx led to a dataset without any incomplete rows, and another validation dataset with 10% of the full dataset's observations. I began with the full dataset.
+
+The "genres" column could contain one or multiple genres, separated by "|". So my first task was to separate the responses in that column. However, working with dataframes is more time consuming, so I decided to convert the separated genre data into a matrix.
+
+```{r edx echo=FALSE}
+#Create empty matrix with rows = nrow(edx) + 1
+edx_genre_matrix = matrix(0,nrow(edx)+1,18)
+genres = c("Action", "Adventure", "Animation", "Children", 
+           "Comedy", "Crime","Documentary", "Drama", "Fantasy",
+           "Film-Noir", "Horror", "Musical", "Mystery","Romance",
+           "Sci-Fi", "Thriller", "War", "Western")
+
+#Pipe in genre names to first row
+edx_genre_matrix[1,] <- genres
+
+#Assign genre names to matrix columns
+colnames(edx_genre_matrix) <- genres
+
+#Pull out $genres to separate
+genres1 = as.data.frame(edx$genres, stringsAsFactors=FALSE)
+genres2 <- as.data.frame(tstrsplit(genres1[,1], '\\|', 
+                                   type.convert=TRUE), 
+                         stringsAsFactors=FALSE)
+colnames(genres2) <- c(1:8)
+
+#Put in genre information into empty matrix
+for (i in 1:nrow(genres2)) {
+  for (c in 1:ncol(genres2)) {
+    genres3 = which(edx_genre_matrix[1,] == genres2[i,c])
+    edx_genre_matrix[i+1,genres3] = 1
+  }
+}
+
+#convert into dataframe
+edx_2 <- as.data.frame(edx_genre_matrix[-1,], stringsAsFactors=FALSE) #remove first row, which was the genre list
+edx_2[,1:18] = sapply(edx_2[,1:18], as.numeric) #convert from characters to integers
+
+#Create a matrix to search for a movie by genre:
+years <- as.data.frame(edx$title, stringsAsFactors=FALSE)
+
+#Create function to pull out characters from the right end of a string
+substrR <- function(x, n){
+  substr(x, nchar(x)-n+1, nchar(x))
+}
+
+#Separate out movie years
+years = as.data.frame(substr(substrR(substrR(years$`edx$title`, 6),5),1,4))
+
+#Create cleaned version
+edx_clean <- cbind(edx[,c(1,2,3)], substr(edx[,5],1,nchar(edx[,5])-6), years, edx_2)
+colnames(edx_clean) <- c("userId", "movieId", "rating", "title", "year", genres)
+
+rm(genres1, genres2, genres3, c, i)
+
+```
+
+As you can see, the genre data from the large dataset:
+```{r edx echo=FALSE}
+head(edx)
+```
+has been dummy-coded into the matrix:
+```{r edx echo=FALSE}
+head(edx_clean)
+```
+
+###Preliminary Predictions
+Before diving into machine learning algorithms, I took a look at the mean predicted ratings by movie and user to check the variation across the board.
+```{r edx echo=FALSE}
+head(edx_clean %>% group_by(movieId) %>% summarise(Users_Rated=n(), Mean_Rating=mean(rating), SD_Rating=sd(rating))
+)
+```
+
+###Principal Component Analysis and Dimension Reduction
+
+Using too many dimensions to fit a machine-learning algorithm can lead to overfitting. Therefore, I ran a PCA analysis on ratings per user ID:
+```{r edx echo=FALSE}
+PCA = prcomp(edx_2)
+autoplot(PCA)
+```
+
+The graph suggests that no orthogonality is obtained. This is to be expected since there is no real difference between the genres in the first column vs. the second vs. the third - we simply arranged them in alphabetical order.
+
+   Fitting the model
+
+I chose the k nearest neighbors model because it seemed to be the most appropriate for this dataset - it would learn from other continuous data points nearest to it.
+
+Because this is a huge dataset and my personal laptop was unable to run larger sets, I created much smaller train set with only p=0.00005 of the total variables. I also recreated the validation set using the cleaned dataset.
+
+```{r edx echo=FALSE}
+validation = edx_clean[test_index,]
+validation <- validation %>% 
+  semi_join(edx_clean, by = "movieId") %>%
+  semi_join(edx_clean, by = "userId")
+
+#Create test and train sets
+set.seed(1)
+# if using R 3.5 or earlier, use `set.seed(1)` instead
+test_index <- createDataPartition(y = edx_clean$rating, times = 1, p = 0.99995, list = FALSE)
+train <- edx_clean[-test_index,]
+test <- edx_clean[test_index,]
+
+model <- c("knn")
+set.seed(1)
+fit <- train(rating ~ ., method = "knn", data = train)
+
+pred <- predict(fit, validation)
+
+cv <- confusionMatrix(factor(pred), validation$rating)$overall["Accuracy"]
+
+```
+
+This led to an accuracy of `mean(cv)`.
+
+
+```{r movielens echo=FALSE}
+library(Metrics)
+RMSE = rmse(validation$rating, pred)
+```
+The knn model also yielded an RMSE of `RMSE`
+
+
+Results
+
+
+Based on the theoretical applicability of the knn model, I ran it on a much smaller training dataset. The accuracy was `mean(cv)`, while the RMSE of the method was `RMSE`
+
+Conclusion
+
+I conclude that previous ratings combined with genres provide quite an accurate prediction of viewer's movie preferences and can be used effectively to successfully predict target audience of a movie as well as movie recommendations for a viewer.
