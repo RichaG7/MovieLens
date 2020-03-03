@@ -11,6 +11,7 @@ if(!require(ggfortify)) install.packages("ggfortify", repos = "http://cran.us.r-
 if(!require(Metrics)) install.packages("Metrics", repos = "http://cran.us.r-project.org")
 if(!require(scales)) install.packages("scales", repos = "http://cran.us.r-project.org")
 if(!require(BBmisc)) install.packages("scales", repos = "http://cran.us.r-project.org")
+if(!require(corrplot)) install.packages("scales", repos = "http://cran.us.r-project.org")
 
 library(tidyverse)
 library(caret)
@@ -19,6 +20,7 @@ library(ggfortify)
 library(Metrics)
 library(scales)
 library(BBmisc)
+library(corrplot)
 
 # MovieLens 10M dataset:
 # https://grouplens.org/datasets/movielens/10m/
@@ -303,37 +305,39 @@ edx_clean = edx_clean %>% mutate(scaled_score_movie = unlist(lapply(b, function(
   normalize(edx_clean$rating[which(edx_clean$movieId == b)], method = "range", range = c(0, 5))
 })))
 
-write.csv(edx_clean, "edx_clean.csv")
+#write.csv(edx_clean, "edx_clean.csv")
+mu_user = mean(edx_clean$scaled_score_user)
+mu_movie = mean(edx_clean$scaled_score_movie)
 
 rmses_user <- sapply(lambda_reg,function(l){
   mu_user<- mean(edx_clean$scaled_score_user, na.rm=TRUE)
   b_i<-edx_clean %>% 
     group_by(movieId) %>% 
-    summarise(b_i = sum(scaled_score_user-mu)/(n()+l))
+    summarise(b_i = sum(scaled_score_user-mu_user)/(n()+l))
   b_u <- edx_clean %>% 
     left_join(b_i,by='movieId') %>% 
     group_by(userId) %>% 
-    summarise(b_u = sum(scaled_score_user-mu-b_i)/(n()+l))
+    summarise(b_u = sum(scaled_score_user-mu_user-b_i)/(n()+l))
   predicted_ratings <- validation %>% 
     left_join(b_i,by='movieId') %>% 
     left_join(b_u,by='userId') %>% 
-    mutate(pred = rowSums(as.matrix(.[,c('mu','b_i','b_u')]), na.rm = TRUE)) %>% .$pred
+    mutate(pred = mu_user+b_i+b_u) %>% .$pred
   return(RMSE(predicted_ratings,validation$rating))
 })
 
 rmses_movie <- sapply(lambda_reg,function(l){
-  mu_user<- mean(edx_clean_rescaled$rescaled_score_movie, na.rm=TRUE)
-  b_i<-edx_clean_rescaled %>% 
+  mu_movie<- mean(edx_clean$scaled_score_movie, na.rm=TRUE)
+  b_i<-edx_clean %>% 
     group_by(movieId) %>% 
-    summarise(b_i = sum(rescaled_score_movie-mu)/(n()+l))
-  b_u <- edx_clean_rescaled %>% 
+    summarise(b_i = sum(scaled_score_movie-mu_movie)/(n()+l))
+  b_u <- edx_clean %>% 
     left_join(b_i,by='movieId') %>% 
     group_by(userId) %>% 
-    summarise(b_u = sum(rescaled_score_movie-mu-b_i)/(n()+l))
+    summarise(b_u = sum(scaled_score_movie-mu_movie-b_i)/(n()+l))
   predicted_ratings <- validation %>% 
     left_join(b_i,by='movieId') %>% 
     left_join(b_u,by='userId') %>% 
-    mutate(pred = mu +b_i+b_u) %>% .$pred
+    mutate(pred = mu_movie+b_i+b_u) %>% .$pred
   return(RMSE(predicted_ratings,validation$rating))
 })
 
@@ -348,17 +352,18 @@ model_stdnregn_rmse2 <- rmses_movie[which.min(rmses_movie)]
 model_stdnregn_rmse2
 
 #########################################MOVIES THAT GO TOGETHER#########################################
-genre_matrix = edx_clean[,c(2,6:23)]
+genre_matrix = edx_clean[,c(2,6:23)] %>% filter(movieId %in% movieId_keep)
 genre_matrix = genre_matrix[!duplicated(genre_matrix$movieId), ]
-genre_matrix = gather(genre_matrix, key = "Genre", value = "Present", -movieId)
-#genre_matrix = data.frame(genre_matrix[,-1], row.names = genre_matrix[,1])
-#genre_matrix = as.matrix(genre_matrix)
 
-
-genre_matrix %>% ggplot(aes(x = movieId, y = Present, color = Genre)) + geom_point() 
+cor_t = cor(genre_matrix[,-1])
+corrplot(cor(genre_matrix[,-1]), method = "color", type = "upper")
 
 #########################################PCA#########################################
 ##PCA
+
+pca_t = prcomp(genre_matrix[,-1])
+corrplot(pca_t$rotation, method = "color")
+plot(summary(pca_t)$importance[3,], xlab="Primary Component", ylab="Cumulative Proportion")
 
 PCA = prcomp(edx_2)
 autoplot(PCA)
