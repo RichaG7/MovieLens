@@ -232,6 +232,7 @@ rmses1 <- sapply(lambda_reg,function(l){
 })
 
 lambda1 = lambda_reg[which.min(rmses1)]
+
 movie_regn_avgs = edx_clean %>% 
   group_by(movieId) %>% 
   summarise(b_i = sum(rating-mu)/(n()+lambda1),n_i = n())
@@ -289,7 +290,7 @@ rmses3 <- sapply(lambda_reg,function(l){
 lambda3 <- lambda_reg[which.min(rmses3)]
 
 model_movieuserregularization_rmse <- rmses3[which.min(rmses3)]
-model_movieuserregularization_rmse
+model_movieuserregularization_rmse #BEST
 
 #########################################AFTER SCALING RATINGS BY USER#########################################
 a = unique(edx_clean$userId)
@@ -317,8 +318,8 @@ rmses_user <- sapply(lambda_reg,function(l){
   b_u <- edx_clean %>% 
     left_join(b_i,by='movieId') %>% 
     group_by(userId) %>% 
-    summarise(b_u = sum(scaled_score_user-mu_user-b_i)/(n()+l))
-  predicted_ratings <- validation %>% 
+    summarise(b_u = sum(scaled_score_user-mu_user)/(n()+l))
+  predicted_ratings = validation %>% 
     left_join(b_i,by='movieId') %>% 
     left_join(b_u,by='userId') %>% 
     mutate(pred = mu_user+b_i+b_u) %>% .$pred
@@ -333,7 +334,7 @@ rmses_movie <- sapply(lambda_reg,function(l){
   b_u <- edx_clean %>% 
     left_join(b_i,by='movieId') %>% 
     group_by(userId) %>% 
-    summarise(b_u = sum(scaled_score_movie-mu_movie-b_i)/(n()+l))
+    summarise(b_u = sum(scaled_score_movie-mu_movie)/(n()+l))
   predicted_ratings <- validation %>% 
     left_join(b_i,by='movieId') %>% 
     left_join(b_u,by='userId') %>% 
@@ -349,15 +350,102 @@ model_stdnregn_rmse1 <- rmses_user[which.min(rmses_user)]
 model_stdnregn_rmse1
 
 model_stdnregn_rmse2 <- rmses_movie[which.min(rmses_movie)]
-model_stdnregn_rmse2
+model_stdnregn_rmse2 #SECOND BEST
+
+#########################################REGULARIZATION BY GENRE#########################################
+
+edx_clean_genre = edx_clean %>%
+  gather('Genre', 'Present', -c(userId, movieId, rating, title, year, scaled_score_user, scaled_score_movie))
+
+rmses_genre <- sapply(lambda_reg,function(l){
+  mu<- mean(edx_clean_genre$rating, na.rm=TRUE)
+  b_i<-edx_clean_genre %>% 
+    group_by(movieId) %>% 
+    summarise(b_i = sum(rating-mu)/(n()+l))
+  b_u <- edx_clean_genre %>% 
+    left_join(b_i,by='movieId') %>% 
+    group_by(userId) %>% 
+    summarise(b_u = sum(rating-mu)/(n()+l))
+  b_g = edx_clean_genre %>% 
+    left_join(b_i,by='movieId') %>% 
+    left_join(b_u,by='userId') %>% 
+    group_by(Genre) %>% 
+    summarise(b_g = sum(rating-mu)/(n()+l))
+  edx_clean_genre = edx_clean_genre %>%
+    left_join(b_i,by='movieId') %>% 
+    left_join(b_u,by='userId') %>% 
+    left_join(b_g, by='Genre') %>%
+    group_by(userId, movieId) %>%
+    summarise(b_g_mean = mean(b_g))
+  edx_clean = edx_clean %>%
+    left_join(edx_clean_genre, by=c('userId', 'movieId')) %>%
+    spread('Genre', 'Present') %>%
+    mutate(total_bias = b_i + b_u + b_g)
+  predicted_ratings <- validation %>% 
+    left_join(b_i,by='movieId') %>% 
+    left_join(b_u,by='userId') %>% 
+    left_join(b_g,by='genres') %>% 
+    mutate(pred = mu+b_i+b_u+b_g) %>% .$pred
+  return(RMSE(predicted_ratings,validation$rating))
+})
+
+lambda5 <- lambda_reg[which.min(rmses_genre)]
+
+model_stdnregn_rmse3 <- rmses_genre[which.min(rmses_genre)]
+model_stdnregn_rmse3
+
+#########################################REGULARIZATION BY YEAR#########################################
+
+rmses_year <- sapply(lambda_reg,function(l){
+  mu<- mean(edx_clean$rating, na.rm=TRUE)
+  b_i<-edx_clean %>% 
+    group_by(movieId) %>% 
+    summarise(b_i = sum(rating-mu)/(n()+l))
+  b_u <- edx_clean %>% 
+    left_join(b_i,by='movieId') %>% 
+    group_by(userId) %>% 
+    summarise(b_u = sum(rating-mu)/(n()+l))
+  b_g = edx_clean %>% 
+    gather('genres', 'present', -c(userId, movieId, rating, title, year, scaled_score_user, scaled_score_movie)) %>% 
+    filter(present == 1) %>% 
+    group_by(genres) %>% 
+    summarise(b_g = sum(rating-mu)/(n()+l))
+  b_y = edx_clean %>% 
+    left_join(b_i,by='movieId') %>% 
+    left_join(b_u,by='userId') %>% 
+    left_join(b_g,by='genres') %>% 
+    group_by(year) %>% 
+    summarise(b_y = sum(rating-mu)/(n()+l))
+  edx_new = edx_clean %>% 
+    left_join(b_i,by='movieId') %>% 
+    left_join(b_u,by='userId') %>% 
+    left_join(b_g,by='genres') %>% 
+    left_join(b_y,by='year') %>%
+    mutate(total_bias = b_i+b_u+b_g+b_y)
+  predicted_ratings <- validation %>% 
+    left_join(edx_new, by=c('userId', 'movieId'))
+    left_join(b_i,by='movieId') %>% 
+    left_join(b_u,by='userId') %>% 
+    left_join(b_g,by='genres') %>% 
+    left_join(b_y,by='year') %>% 
+    mutate(pred = rating+total_bias) %>% .$pred
+  return(RMSE(predicted_ratings,validation$rating))
+})
+
+lambda6 <- lambda_reg[which.min(rmses_year)]
+
+model_stdnregn_rmse4 <- rmses_year[which.min(rmses_year)]
+model_stdnregn_rmse4
 
 #########################################MOVIES THAT GO TOGETHER#########################################
-genre_matrix = edx_clean[,c(2,6:23)] %>% filter(movieId %in% movieId_keep)
+genre_matrix = edx_clean[,c(2,3,6:23)] %>% filter(movieId %in% movieId_keep)
 genre_matrix = genre_matrix[!duplicated(genre_matrix$movieId), ]
 
 cor_t = cor(genre_matrix[,-1])
 corrplot(cor(genre_matrix[,-1]), method = "color", type = "upper")
 
+#For correlation lower than -0.1975513 (mean-sd), we have comedy-drama, horror-drama, and comedy-thriller
+#For correlation greater than 0.2929194 (mean + sd), we have animation-children
 #########################################PCA#########################################
 ##PCA
 
@@ -365,13 +453,27 @@ pca_t = prcomp(genre_matrix[,-1])
 corrplot(pca_t$rotation, method = "color")
 plot(summary(pca_t)$importance[3,], xlab="Primary Component", ylab="Cumulative Proportion")
 
-PCA = prcomp(edx_2)
-autoplot(PCA)
+pca_t2 = prcomp(edx_clean[,-c(4)])
+corrplot(pca_t2$rotation, method = "color")
+plot(summary(pca_t2)$importance[3,], xlab="Primary Component", ylab="Cumulative Proportion")
 
-validation = edx_clean[test_index,]
-validation <- validation %>% 
-  semi_join(edx_clean, by = "movieId") %>%
-  semi_join(edx_clean, by = "userId")
+pca_edx_rating = prcomp(edx_clean[,-c(4,24,25)])
+corrplot(pca_edx_rating$rotation, method = "color")
+plot(summary(pca_edx_rating)$importance[3,], xlab="Primary Component", ylab="Cumulative Proportion")
+
+pca_edx_scaled_rating_user = prcomp(edx_clean[,-c(3,4,25)])
+corrplot(pca_edx_scaled_rating_user$rotation, method = "color")
+plot(summary(pca_edx_scaled_rating_user)$importance[3,], xlab="Primary Component", ylab="Cumulative Proportion")
+
+pca_edx_scaled_rating_movie = prcomp(edx_clean[,-c(3,4,24)])
+corrplot(pca_edx_scaled_rating_movie$rotation, method = "color")
+plot(summary(pca_edx_scaled_rating_movie)$importance[3,], xlab="Primary Component", ylab="Cumulative Proportion")
+
+base = anti_join(edx_clean, validation)
+train_index = createDataPartition(y = base$rating, times = 1, p = 0.5, list = FALSE)
+train <- base[train_index,]
+
+fit <- train(rating ~ ., method = "lm", data = train)
 
 #Create test and train sets
 set.seed(1)
@@ -380,9 +482,8 @@ test_index <- createDataPartition(y = edx_clean$rating, times = 1, p = 0.99995, 
 train <- edx_clean[-test_index,]
 test <- edx_clean[test_index,]
 
-model <- c("knn")
 set.seed(1)
-fit <- train(rating ~ ., method = "knn", data = train)
+fit <- train(rating ~ ., method = "lm", data = train)
 
 pred <- predict(fit, validation)
 
