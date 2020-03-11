@@ -79,6 +79,7 @@ test = edx %>% group_by(title) %>% count()
 test = edx %>% group_by(rating) %>% count()
 
 remove(test)
+
 #########################################DATA PREPROCESSING#########################################
 
 ###Separate combined genres###
@@ -160,30 +161,56 @@ sd(user_counts$Movies_Rated)
 quantile(user_counts$Movies_Rated, c(.25, .50, .75))
 userId_keep = which(user_counts$Movies_Rated > 32)
 #We will remove all users with fewer than 32 reviews when calculating our mean
+
+rm(movie_counts, user_counts)
 #########################################MOVIE EFFECTS#########################################
 edx_clean %>% 
   group_by(movieId) %>% 
   summarise(Users_Rated=n(), Mean_Rating=mean(rating), SD_Rating=sd(rating)) %>% 
   filter(Users_Rated > 30)
 
-test = edx_clean %>% filter(movieId %in% movieId_keep) %>% filter(userId %in% userId_keep) %>% mean(rating)
+edx_filtered = edx_clean %>% filter(movieId %in% movieId_keep) %>% filter(userId %in% userId_keep)
 
-mu <- mean(test$rating)
+rm(movieId_keep, userId_keep)
+
+mu = mean(edx_clean$rating)
+
+mu_clean = mean(edx_filtered$rating)
+
+rm(edx_filtered)
 
 movie_avgs <- edx_clean %>% 
   group_by(movieId) %>% 
-  summarize(b_i = mean(rating - mu))
+  summarise(b_i = mean(rating - mu))
 
-predicted_ratings_movie_avg <- mu + validation %>% left_join(movie_avgs,by="movieId") %>% .$b_i
-model_movie_rmse <- RMSE(predicted_ratings_movie_avg,validation$rating)
-model_movie_rmse
+predicted_ratings_movie <- validation %>% 
+  left_join(movie_avgs,by='movieId') %>% 
+  mutate(pred = mu + b_i) %>%
+  .$pred
+
+model_movie_rmse <- RMSE(predicted_ratings_movie,validation$rating)
+model_movie_rmse #bad
+
+movie_avgs_clean <- edx_clean %>% 
+  group_by(movieId) %>% 
+  summarise(b_i = mean(rating - mu_clean))
+
+predicted_ratings_movie_clean <- validation %>% 
+  left_join(movie_avgs_clean,by='movieId') %>% 
+  mutate(pred = mu_clean + b_i) %>%
+  .$pred
+
+model_movie_rmse_clean <- RMSE(predicted_ratings_movie_clean,validation$rating)
+model_movie_rmse_clean #bad
+
+rm(predicted_ratings_movie, predicted_ratings_movie_clean)
 
 #########################################USER EFFECTS#########################################
 edx_clean %>% group_by(userId) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), SD_Rating=sd(rating))
 
 user_avgs <- edx_clean %>% 
   group_by(userId) %>%
-  summarize(b_u = mean(rating - mu))
+  summarise(b_u = mean(rating - mu))
 
 predicted_ratings_user = validation %>% 
   left_join(user_avgs,by = 'userId') %>% 
@@ -191,30 +218,182 @@ predicted_ratings_user = validation %>%
   .$pred
 
 model_user_rmse <- RMSE(predicted_ratings_user,validation$rating)
-model_user_rmse
+model_user_rmse #bad
 
+user_avgs_clean <- edx_clean %>% 
+  group_by(userId) %>%
+  summarise(b_u = mean(rating - mu_clean))
+
+predicted_ratings_user_clean = validation %>% 
+  left_join(user_avgs,by = 'userId') %>% 
+  mutate(pred = mu_clean+b_u) %>% 
+  .$pred
+
+model_user_rmse_clean <- RMSE(predicted_ratings_user_clean,validation$rating)
+model_user_rmse_clean #worse
+
+rm(predicted_ratings_user, predicted_ratings_user_clean)
 #########################################USER AND MOVIE BIAS#########################################
 
-user_movie_avgs = edx_clean %>% 
-  left_join(movie_avgs, by='movieId') %>%
-  left_join(user_avgs,by = 'userId') %>%
-  group_by(userId) %>%
-  summarize(b_u = mean(rating - mu - b_i))
-
-movie_user_avgs = edx_clean %>% 
-  left_join(movie_avgs, by='movieId') %>%
-  left_join(user_avgs,by = 'userId') %>%
-  group_by(movieId) %>%
-  summarize(b_i = mean(rating - mu - b_u))
-
-predicted_ratings_user_movie = validation %>% 
-  left_join(movie_user_avgs,by = 'movieId') %>% 
-  left_join(user_movie_avgs,by = 'userId') %>% 
+predicted_ratings_movie_user = validation %>%
+  left_join(movie_avgs,by='movieId') %>% 
+  left_join(user_avgs,by = 'userId') %>% 
   mutate(pred = mu+b_i+b_u) %>% 
   .$pred
 
 model_movie_user_rmse <- RMSE(predicted_ratings_user,validation$rating)
-model_movie_user_rmse
+model_movie_user_rmse #bad
+
+predicted_ratings_movie_user_clean = validation %>%
+  left_join(movie_avgs_clean,by='movieId') %>% 
+  left_join(user_avgs_clean,by = 'userId') %>% 
+  mutate(pred = mu+b_i+b_u) %>% 
+  .$pred
+
+model_movie_user_rmse_clean <- RMSE(predicted_ratings_movie_user_clean,validation$rating)
+model_movie_user_rmse_clean #better!
+
+rm(predicted_ratings_movie_user, predicted_ratings_movie_user_clean)
+#########################################USER + MOVIE BIAS#########################################
+
+movieuser_avgs <- edx_clean %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  group_by(userId) %>%
+  summarise(b_u = mean(rating - mu - b_i))
+
+predicted_ratings_movieuser = validation %>%
+  left_join(movie_avgs,by='movieId') %>% 
+  left_join(movieuser_avgs,by = 'userId') %>% 
+  mutate(pred = mu+b_i+b_u) %>% 
+  .$pred
+
+model_movieuser_rmse <- RMSE(predicted_ratings_movieuser,validation$rating)
+model_movieuser_rmse #better!
+
+movieuser_avgs_clean <- edx_clean %>% 
+  left_join(movie_avgs_clean, by='movieId') %>%
+  group_by(userId) %>%
+  summarise(b_u = mean(rating - mu_clean - b_i))
+
+predicted_ratings_movieuser_clean = validation %>%
+  left_join(movie_avgs_clean,by='movieId') %>% 
+  left_join(movieuser_avgs_clean,by = 'userId') %>% 
+  mutate(pred = mu+b_i+b_u) %>% 
+  .$pred
+
+model_movieuser_rmse_clean <- RMSE(predicted_ratings_movieuser_clean,validation$rating)
+model_movieuser_rmse_clean #slightly worse (in 5th dec place) than previous but still better!
+
+rm(predicted_ratings_movieuser, predicted_ratings_movieuser_clean)
+#########################################MOVIE+USER BIAS#########################################
+
+usermovie_avgs <- edx_clean %>% 
+  left_join(user_avgs, by='userId') %>%
+  group_by(movieId) %>%
+  summarise(b_i = mean(rating - mu - b_u))
+
+predicted_ratings_usermovie = validation %>%
+  left_join(user_avgs,by='userId') %>% 
+  left_join(usermovie_avgs,by = 'movieId') %>% 
+  mutate(pred = mu+b_i+b_u) %>% 
+  .$pred
+
+model_usermovie_rmse <- RMSE(predicted_ratings_usermovie,validation$rating)
+model_usermovie_rmse #worse than previous but still good!
+
+usermovie_avgs_clean <- edx_clean %>% 
+  left_join(user_avgs_clean, by='userId') %>%
+  group_by(movieId) %>%
+  summarise(b_i = mean(rating - mu_clean - b_u))
+
+predicted_ratings_usermovie_clean = validation %>%
+  left_join(user_avgs_clean,by='userId') %>% 
+  left_join(usermovie_avgs_clean,by = 'movieId') %>% 
+  mutate(pred = mu+b_i+b_u) %>% 
+  .$pred
+
+model_usermovie_rmse_clean <- RMSE(predicted_ratings_usermovie_clean,validation$rating)
+model_usermovie_rmse_clean #worse
+
+rm(predicted_ratings_usermovie, predicted_ratings_usermovie_clean)
+#########################################GENRE BIAS#########################################
+
+edx_clean_genre = edx_clean %>% 
+  gather('genre', 'present', -c(userId, movieId, rating, title, year, 
+                                scaled_score_movie, rescaled_score_movie, 
+                                scaled_score_user, rescaled_score_user)) %>%
+  filter(present == 1)
+
+genre_avgs <- edx_clean_genre %>% 
+  group_by(genre) %>%
+  summarise(b_g = mean(rating - mu, na.rm=TRUE), b_g_clean = mean(rating - mu_clean, na.rm=TRUE))
+
+edx_clean_genre = edx_clean_genre %>%
+  left_join(genre_avgs, by='genre') %>%
+  spread('genre', 'present')
+
+genre_avgs <- edx_clean_genre %>% 
+  group_by(movieId) %>%
+  summarise(b_g = mean(b_g), b_g_clean = mean(b_g))
+
+predicted_ratings_genre = validation %>%
+  left_join(genre_avgs,by = 'movieId') %>% 
+  mutate(pred = mu+b_g, pred_clean = mu_clean+b_g_clean) %>% 
+  .$pred
+
+predicted_ratings_genre_clean = validation %>%
+  left_join(genre_avgs,by = 'movieId') %>% 
+  mutate(pred = mu+b_g, pred_clean = mu_clean+b_g_clean) %>% 
+  .$pred_clean
+
+model_genre_rmse <- RMSE(predicted_ratings_genre,validation$rating, na.rm=TRUE)
+model_genre_rmse #REAL bad
+
+model_genre_rmse_clean <- RMSE(predicted_ratings_genre_clean,validation$rating, na.rm=TRUE)
+model_genre_rmse_clean #EVEN worse
+
+rm(predicted_ratings_genre, predicted_ratings_genre_clean)
+
+#filtered mu is consistently worse, therefore we will stop using it.
+
+rm(movie_avgs_clean, user_avgs_clean, movieuser_avgs_clean, usermovie_avgs_clean)
+#########################################GENRE + MOVIE + USER BIAS#########################################
+
+edx_clean_genre = edx_clean %>% 
+  gather('genre', 'present', -c(userId, movieId, rating, title, year, 
+                                scaled_score_movie, rescaled_score_movie, 
+                                scaled_score_user, rescaled_score_user)) %>%
+  filter(present == 1)
+
+genre_avgs <- edx_clean_genre %>% 
+  group_by(genre) %>%
+  summarise(b_g = mean(rating - mu, na.rm=TRUE), b_g_clean = mean(rating - mu_clean, na.rm=TRUE))
+
+edx_clean_genre = edx_clean_genre %>%
+  left_join(genre_avgs, by='genre') %>%
+  spread('genre', 'present')
+
+genre_avgs <- edx_clean_genre %>% 
+  group_by(movieId) %>%
+  summarise(b_g = mean(b_g), b_g_clean = mean(b_g))
+
+predicted_ratings_genre = validation %>%
+  left_join(genre_avgs,by = 'movieId') %>% 
+  mutate(pred = mu+b_g, pred_clean = mu_clean+b_g_clean) %>% 
+  .$pred
+
+predicted_ratings_genre_clean = validation %>%
+  left_join(genre_avgs,by = 'movieId') %>% 
+  mutate(pred = mu+b_g, pred_clean = mu_clean+b_g_clean) %>% 
+  .$pred_clean
+
+model_genre_rmse <- RMSE(predicted_ratings_genre,validation$rating, na.rm=TRUE)
+model_genre_rmse #REAL bad
+
+model_genre_rmse_clean <- RMSE(predicted_ratings_genre_clean,validation$rating, na.rm=TRUE)
+model_genre_rmse_clean #EVEN worse
+
+rm(predicted_ratings_genre, predicted_ratings_genre_clean)
 
 #########################################REGULARISATION OF MOVIE RATING#########################################
 
@@ -379,7 +558,7 @@ rmses_genre <- sapply(lambda_reg,function(l){
     summarise(b_g_mean = mean(b_g))
   edx_clean = edx_clean %>%
     left_join(edx_clean_genre, by=c('userId', 'movieId')) %>%
-    spread('Genre', 'Present') %>%
+    spread('Genre', 'Present') %>%78
     mutate(total_bias = b_i + b_u + b_g)
   predicted_ratings <- validation %>% 
     left_join(b_i,by='movieId') %>% 
@@ -436,6 +615,20 @@ lambda6 <- lambda_reg[which.min(rmses_year)]
 
 model_stdnregn_rmse4 <- rmses_year[which.min(rmses_year)]
 model_stdnregn_rmse4
+
+RMSE_table = data.frame(Method = c('Movie Bias', 'Movie Bias with filtered mu', 
+                                   'User Bias', 'User Bias with filtered mu', 
+                                   'User and Movie Bias calculated separately', 'User and Movie Bias calculated separately with filtered mu',
+                                   'User and Movie Bias calculated together', 'User and Movie Bias calculated together with filtered mu',
+                                   'Movie and User Bias calculated together', 'Movie and User Bias calculated together with filtered mu',
+                                   'Genre Bias', 'Genre Bias with filtered mu',
+                                   'User, Movie and Genre Bias'),
+                        RMSE = c(model_movie_rmse, model_movie_rmse_clean,
+                                 model_user_rmse, model_user_rmse_clean,
+                                 model_movie_user_rmse, model_movie_user_rmse_clean,
+                                 model_movieuser_rmse, model_movieuser_rmse_clean,
+                                 model_usermovie_rmse, model_usermovie_rmse_clean,
+                                 ))
 
 #########################################MOVIES THAT GO TOGETHER#########################################
 genre_matrix = edx_clean[,c(2,3,6:23)] %>% filter(movieId %in% movieId_keep)
