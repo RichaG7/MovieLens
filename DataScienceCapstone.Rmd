@@ -1,13 +1,13 @@
 ---
 title: "MovieLens Project"
 author: "Richa Gautam"
-date: "6/5/2019"
+date: "3/28/2020"
 output: html_document
 ---
 #Utilizing the Movielens Database to Predict Movie Preferences
 
 
-```{r setup, include=FALSE echo=FALSE}
+```{r setup, include=FALSE, echo=FALSE}
 ################################
 # Create edx set, validation set
 ################################
@@ -17,16 +17,24 @@ output: html_document
 if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
 if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
 if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
-if(!require(ggfortify)) install.packages("ggfortify", repos = "http://cran.us.r-project.org")
 if(!require(Metrics)) install.packages("Metrics", repos = "http://cran.us.r-project.org")
 if(!require(scales)) install.packages("scales", repos = "http://cran.us.r-project.org")
+if(!require(BBmisc)) install.packages("BBmisc", repos = "http://cran.us.r-project.org")
+if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-project.org")
+if(!require(lubridate)) install.packages("lubridate", repos = "http://cran.us.r-project.org")
+if(!require(psych)) install.packages("psych", repos = "http://cran.us.r-project.org")
+if(!require(Hmisc)) install.packages("Hmisc", repos = "http://cran.us.r-project.org")
 
 library(tidyverse)
 library(caret)
 library(data.table)
-library(ggfortify)
 library(Metrics)
 library(scales)
+library(BBmisc)
+library(corrplot)
+library(lubridate)
+library(psych)
+library(Hmisc)
 
 # MovieLens 10M dataset:
 # https://grouplens.org/datasets/movielens/10m/
@@ -91,128 +99,523 @@ The code provided by edx led to a dataset without any incomplete rows, and anoth
 
 The "genres" column could contain one or multiple genres, separated by "|". So my first task was to separate the responses in that column. However, working with dataframes is more time consuming, so I decided to convert the separated genre data into a matrix.
 
-```{r edx echo=FALSE}
-#Create empty matrix with rows = nrow(edx) + 1
-edx_genre_matrix = matrix(0,nrow(edx)+1,18)
-genres = c("Action", "Adventure", "Animation", "Children", 
-           "Comedy", "Crime","Documentary", "Drama", "Fantasy",
-           "Film-Noir", "Horror", "Musical", "Mystery","Romance",
-           "Sci-Fi", "Thriller", "War", "Western")
+```{r preprocessing, echo=FALSE}
+###Separate combined genres###
 
-#Pipe in genre names to first row
-edx_genre_matrix[1,] <- genres
-
-#Assign genre names to matrix columns
-colnames(edx_genre_matrix) <- genres
-
-#Pull out $genres to separate
-genres1 = as.data.frame(edx$genres, stringsAsFactors=FALSE)
-genres2 <- as.data.frame(tstrsplit(genres1[,1], '\\|', 
-                                   type.convert=TRUE), 
-                         stringsAsFactors=FALSE)
-colnames(genres2) <- c(1:8)
-
-#Put in genre information into empty matrix
-for (i in 1:nrow(genres2)) {
-  for (c in 1:ncol(genres2)) {
-    genres3 = which(edx_genre_matrix[1,] == genres2[i,c])
-    edx_genre_matrix[i+1,genres3] = 1
-  }
-}
-
-#convert into dataframe
-edx_2 <- as.data.frame(edx_genre_matrix[-1,], stringsAsFactors=FALSE) #remove first row, which was the genre list
-edx_2[,1:18] = sapply(edx_2[,1:18], as.numeric) #convert from characters to integers
-
-#Create a matrix to search for a movie by genre:
-years <- as.data.frame(edx$title, stringsAsFactors=FALSE)
+edx = edx %>% mutate(Action = ifelse(grepl("Action", genres), 1, 0),
+                     Adventure = ifelse(grepl("Adventure", genres), 1, 0),
+                     Animation = ifelse(grepl("Animation", genres), 1, 0),
+                     Children = ifelse(grepl("Children", genres), 1, 0),
+                     Comedy = ifelse(grepl("Comedy", genres), 1, 0),
+                     Crime = ifelse(grepl("Crime", genres), 1, 0),
+                     Documentary = ifelse(grepl("Documentary", genres), 1, 0),
+                     Drama = ifelse(grepl("Drama", genres), 1, 0),
+                     Fantasy = ifelse(grepl("Fantasy", genres), 1, 0),
+                     Film_noir = ifelse(grepl("Film-Noir", genres), 1, 0),
+                     Horror = ifelse(grepl("Horror", genres), 1, 0),
+                     Musical = ifelse(grepl("Musical", genres), 1, 0),
+                     Mystery = ifelse(grepl("Mystery", genres), 1, 0),
+                     Romance = ifelse(grepl("Romance", genres), 1, 0),
+                     Sci_Fi = ifelse(grepl("Sci-Fi", genres), 1, 0),
+                     Thriller = ifelse(grepl("Thriller", genres), 1, 0),
+                     War = ifelse(grepl("War", genres), 1, 0),
+                     Western = ifelse(grepl("Western", genres), 1, 0))
 
 #Create function to pull out characters from the right end of a string
 substrR <- function(x, n){
   substr(x, nchar(x)-n+1, nchar(x))
 }
 
-#Separate out movie years
-years = as.data.frame(substr(substrR(substrR(years$`edx$title`, 6),5),1,4))
+edx = edx %>% mutate(year = substr(substrR(substrR(edx$title, 6),5),1,4))
 
-#Create cleaned version
-edx_clean <- cbind(edx[,c(1,2,3)], substr(edx[,5],1,nchar(edx[,5])-6), years, edx_2)
-colnames(edx_clean) <- c("userId", "movieId", "rating", "title", "year", genres)
+edx$year = as.numeric(edx$year)
 
-rm(genres1, genres2, genres3, c, i)
-
+edx <- edx %>%
+  mutate(rating_datetime = year(as_datetime(timestamp)))
 ```
 
-As you can see, the genre data from the large dataset:
-```{r edx echo=FALSE}
+As you can see, the genre data from the large dataset has been dummy-coded:
+```{r edx, echo=FALSE}
 head(edx)
-```
-has been dummy-coded into the matrix:
-```{r edx echo=FALSE}
-head(edx_clean)
 ```
 
 ###Preliminary Predictions
-Before diving into machine learning algorithms, I took a look at the mean predicted ratings by movie and user to check the variation across the board.
-```{r edx echo=FALSE}
-head(edx_clean %>% group_by(movieId) %>% summarise(Users_Rated=n(), Mean_Rating=mean(rating), SD_Rating=sd(rating))
+
+####User Effects
+
+Movie ratings will be impacted by the user, as users have different tastes and some users are likely to rate movies more highly on average than others. Table 1 shows the mean rating and standard deviation for the first 6 userIds.
+```{r usereffects, echo=FALSE}
+head(edx %>% group_by(userId) %>% summarise(Users_Rated=n(), Mean_Rating=mean(rating), SD_Rating=sd(rating))
 )
 ```
+Table 1: Mean rating and standard deviation for the first 6 userIds.
 
-###Principal Component Analysis and Dimension Reduction
+Figure 1 visualizes the number of ratings for the first 100 userIds.
+```{r usereffects, echo=FALSE}
+user_counts = edx %>% group_by(userId) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation = sd(rating))
+user_counts[1:100,] %>% 
+  ggplot(aes(x=userId, y=Movies_Rated)) + 
+  geom_bar(stat="identity") + 
+  labs(title = "Number of Movies Rated by Each User")+
+  ylab("Number of Movies Rated")
+```
+Figure 1: Number of Movies rated by first 100 userIds.
 
-Using too many dimensions to fit a machine-learning algorithm can lead to overfitting. Therefore, I ran a PCA analysis on ratings per user ID:
-```{r edx echo=FALSE}
-PCA = prcomp(edx_2)
-autoplot(PCA)
+In figure 2, we can see the change in mean rating, and the standard deviation (as errorbars) in ratings, for the first 100 userIds.
+```{r usereffects, echo=FALSE}
+user_ratings[1:100,] %>% 
+  ggplot(aes(x=userId, y=Mean_Rating)) + 
+  geom_bar(stat="identity") + 
+  geom_errorbar(aes(ymin = Mean_Rating-Standard_Deviation, ymax = Mean_Rating+Standard_Deviation)) +
+  labs(title = "Mean Rating by User")+
+  ylab("Mean Rating")
+
+rm(user_counts, user_ratings)
+```
+Figure 2: Mean rating by first 100 userIds.
+
+####Movie Effects
+
+Movie ratings will also be impacted by the movie itself, as some movies are better than others. Table 2 shows the mean rating and standard deviation for the first 6 movieIds.
+```{r movieeffects, echo=FALSE}
+head(edx %>% group_by(movieId) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation=sd(rating))
+)
+```
+Table 2: Mean rating and standard deviation for the first 6 movieIds
+
+Figure 3 visualizes the number of ratings for the first 100 movieIds
+```{r movieeffects, echo=FALSE}
+movie_counts = edx %>% group_by(movieIds) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation = sd(rating))
+movie_counts[1:100,] %>% 
+  ggplot(aes(x=userId, y=Movies_Rated)) + 
+  geom_bar(stat="identity") + 
+  labs(title = "Number of Ratings for Each Movie")+
+  ylab("Number of Movies Rated")
+```
+Figure 3: Number of Movies rated by first 100 movieIds
+
+In figure 4, we can see the change in mean rating, and the standard deviation (as errorbars) in ratings, for the first 100 movieIds
+```{r movieeffects, echo=FALSE}
+movie_ratings[1:100,] %>% 
+  ggplot(aes(x=userId, y=Mean_Rating)) + 
+  geom_bar(stat="identity") + 
+  geom_errorbar(aes(ymin = Mean_Rating-Standard_Deviation, ymax = Mean_Rating+Standard_Deviation)) +
+  labs(title = "Mean Rating by Movie") +
+  ylab("Mean Rating")
+
+rm(movie_counts, movie_ratings)
+```
+Figure 4: Mean rating by first 100 movieIds
+
+####Genre Relationships
+
+Movie ratings may be impacted by the genre of the movies. However, each movie may belong to multiple genres. To see if there was a correlation between the genres, I did a Pearson-r correlation with a significance test on the genre matrix. The significance of  correlation is visualized in Figure 5.
+
+```{r genreeffects, echo=FALSE}
+genre_matrix = edx[,c(6:23)]
+cor_t = rcorr(as.matrix(genre_matrix), type="pearson")
+cor_t_p = cor_t$P
+corrplot(cor_t_p, method = "color", type = "upper")
+```
+Figure 5: Significance of correlation between the genres
+
+Correlations between XXX were significant.
+
+For correlation lower than -0.1975513 (mean-sd), we have Comedy-Drama, Horror-Drama, and Comedy-Thriller, meaning these genres overlap the least.
+
+For correlation greater than 0.2929194 (mean + sd), we have Animation-Children, meaning these genres overlap the most.
+
+####Genre Effects
+
+Given the correlation of genres with ratings, movie ratings will also be impacted by the movie's genres. Table 3 shows the mean rating and standard deviation for each genre. Plotting significance of correlation between ratings and genres, we see no significant interactions (Figure 6). This suggests that individual genres do not have an impact on ratings.
+```{r genreeffects, echo=FALSE}
+genre_matrix = edx[,c(3,6:23)]
+cor_t = rcorr(as.matrix(genre_matrix), type="pearson")
+corrplot(cor_t$p, method = "color", type = "upper")
+```
+Figure 6: Correlation between genres and ratings.
+
+And plotting mean ratings for genre, we see bias by genres as well.
+```{r genreeffects, echo=FALSE}
+genre_matrix = edx[,c(1,2,3,6:23)]
+
+genre_counts = genre_matrix %>% 
+  gather('genre', 'present', -c(userId, movieId, rating)) %>%
+  filter(present == 1) %>% group_by(genre) %>%
+  summarise(Movies_Rated = n(), Mean_Rating=mean(rating), Standard_Deviation=sd(rating))
+
+genre_counts
+```
+Table 3: Mean rating and standard deviation for each genre.
+
+Figure 7 visualizes the number of movies in each genre.
+```{r genreeffects, echo=FALSE}
+genre_counts %>% 
+  ggplot(aes(x=genre, y=Movies_Rated)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  labs(title = "Number of Movies Rated in Each Genre")+
+  ylab("Number of Movies Rated")
+```
+Figure 7: Number of Movies rated in each genre.
+
+In figure 8, we can see the change in mean rating and the standard deviation (as errorbars) in ratings for all genres.
+```{r genreeffects, echo=FALSE}
+genre_counts %>% 
+  ggplot(aes(x=genre, y=Mean_Rating)) + 
+  geom_bar(stat="identity") + 
+  geom_errorbar(aes(ymin = Mean_Rating-Standard_Deviation, ymax = Mean_Rating+Standard_Deviation)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  labs(title = "Mean Rating by Genre")+
+  ylab("Mean Rating")
+```
+Figure 8: Mean rating and standard deviation for all genres.
+
+###Genre Combination
+
+However, the combination of genres a movie falls into may be more important than the discrete genres it is part of. Figure 9 visualizes the mean rating by genre combination for 50 top-rated genre combinations.
+```{r genrecombo, echo=FALSE}
+
+genre_matrix = edx[,c(1,2,3,6:23)]
+
+genre_matrix1 = genre_matrix %>% 
+  gather('genre', 'present', -c(userId, movieId, rating)) %>%
+  filter(present == 1) %>%
+  select(-c(rating, present)) %>%
+  group_by_at(vars(userId:movieId)) %>%
+  summarize_all(paste, collapse="|")
+
+genre_matrix2 = genre_matrix[,c(1,2,3)]
+
+genre_matrix3 = genre_matrix1 %>% 
+  left_join(genre_matrix2, by=c('userId', 'movieId'))
+
+genre_matrix = genre_matrix1 %>% 
+  left_join(genre_counts, by='genre')
+
+genre_counts = edx %>% 
+  group_by(genres) %>%
+  summarise(Mean_Rating = mean(rating), Standard_Deviation = sd(rating))
+
+genre_counts = arrange(genre_counts, desc(Mean_Rating))
+
+genre_counts[1:50,] %>% 
+  ggplot(aes(x=genres, y=Mean_Rating)) + 
+  geom_bar(stat="identity") + 
+  geom_errorbar(aes(ymin = Mean_Rating-Standard_Deviation, ymax = Mean_Rating+Standard_Deviation)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  labs(title = "Mean Rating for Top 50 Genres")+
+  ylab("Mean Rating")
+
+rm(genre_matrix1, genre_matrix2, genre_matrix3)
+```
+Figure 9: Mean Rating by genre combination for 50 top-rated genre combinations.
+
+In Figure 10 we see the distribution for the 50 least rated genre combinations
+```{r genrecombo, echo=FALSE}
+genre_counts[nrow(genre_counts)-50:nrow(genre_counts),] %>% 
+  ggplot(aes(x=genres, y=Mean_Rating)) + 
+  geom_bar(stat="identity") + 
+  geom_errorbar(aes(ymin = Mean_Rating-Standard_Deviation, ymax = Mean_Rating+Standard_Deviation)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  labs(title = "Mean Rating for Bottom 50 Genres")+
+  ylab("Mean Rating")
+
+```
+Figure 10: Mean Rating by genre combination for 50 least-rated genre combinations.
+
+Correlating the genre combinations with ratings, we see
+```{r genrecombo, echo=FALSE}
+edx = edx %>% 
+  left_join(genre_matrix, by=c('userId', 'movieId'))
+
+genre_corplot = edx[,c(3,26)]
+
+genre_corplot  = genre_corplot %>% 
+  mutate(present = 1) %>%
+  group_by_at(vars(-present)) %>%  # group by everything other than the value column. 
+  mutate(row_id=1:n()) %>% ungroup() %>%  # build group index
+  spread(key=genre, value=present, fill=0) %>%    # spread
+  select(-row_id)  # drop the index
+
+cor_t = rcorr(as.matrix(genre_corplot), type="pearson")
+
+cor_t_p = cor_t$P
+
+heatmap(cor_t_p, Rowv = NA, Colv = NA)
+
+```
+Figure 11: Correlation of Genre Combination with Ratings.
+
+Of the `r nrow(genre_counts)` unique genre combinations, `r sum(cor_t_p[1,]< 0.05, na.rm = TRUE)` of them were significantly correlating with ratings. This suggests a much stronger relationship between genre combinations and rating. Therefore, I will use genre bias from the genre combinations in the regression.
+
+```{r genresig, echo=FALSE}
+rm(cor_t, cor_t_p, genre_corplot, genre_matrix)
+```
+####Year of Release Effects
+
+The year of a movie's release may affect ratings as well. Old movies may be rated more highly because they are considered classics. On the other hand, there will also be fewer movies in the early years, which could lead to the ratings having higher variance. Table 4 shows the mean rating and standard deviation for the first 10 movieIds.
+```{r year, echo=FALSE}
+head(edx %>% group_by(year) %>% summarise(Number_of_Ratings=n(), Mean_Rating=mean(rating), SD_Rating=sd(rating))
+)
+```
+Table 4: Mean rating and standard deviation for movies by Year
+
+Figure 12 visualizes the number of movies rated for each year of release.
+```{r year, echo=FALSE}
+year_counts = edx %>% group_by(year) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation = sd(rating))
+year_counts %>% 
+  ggplot(aes(x=year, y=Movies_Rated)) + 
+  geom_bar(stat="identity") + 
+  labs(title = "Number of Movies Rated from Each Year")+
+  ylab("Number of Movies Rated")
+```
+Figure 12: Number of Movies rated for each year of release.
+
+In figure 13, we can see the change in mean rating, and the standard deviation (as errorbars) in ratings, for each year of rellease.
+```{r year, echo=FALSE}
+year_counts %>% 
+  ggplot(aes(x=year, y=Mean_Rating)) + 
+  geom_bar(stat="identity") + 
+  geom_errorbar(aes(ymin = Mean_Rating-Standard_Deviation, ymax = Mean_Rating+Standard_Deviation)) +
+  labs(title = "Mean Rating by Year")+
+  ylab("Mean Rating")
+```
+Figure 13: Mean rating by first 1000 userIds.
+
+####Time of Rating Effects
+
+Are ratings affected by the year of rating? Table 5 shows the mean rating and standard deviation for the first 6 years.
+```{r timestamp, echo=FALSE}
+head(edx %>% group_by(rating_datetime) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), SD_Rating=sd(rating))
+)
+```
+Table 5: Mean rating and standard deviation for the first 6 years of rating
+
+Figure 14 visualizes the number of ratings for each year of rating.
+```{r timestamp, echo=FALSE}
+rating_datetime_counts = edx %>% group_by(rating_datetime) %>% 
+  summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation=sd(rating))
+rating_datetime_counts %>% 
+  ggplot(aes(x=rating_datetime, y=Movies_Rated)) + 
+  geom_bar(stat="identity") + 
+  labs(title = "Number of Movies Rated Each Year")+
+  ylab("Number of Movies Rated")
+```
+Figure 14: Number of Movies rated Year of Rating.
+
+In figure 15, we can see the change in mean rating, and the standard deviation (as errorbars) in ratings, for each year of rating.
+```{r timestamp, echo=FALSE}
+rating_datetime_counts %>% 
+  ggplot(aes(x=rating_datetime, y=Mean_Rating)) + 
+  geom_bar(stat="identity") + 
+  geom_errorbar(aes(ymin = Mean_Rating-Standard_Deviation, ymax = Mean_Rating+Standard_Deviation)) +
+  labs(title = "Mean Rating by Rating Year")+
+  ylab("Mean Rating")
+```
+Figure 15: Mean rating by Year of Rating.
+
+The figures who little impact of year. Digging in deeper, I created another variable - distance_from_release - that calculated how long after the release of a movie was it rated by a user. Plotting the mean and standard deviation for this, we see similar plateauing (Figure 16).
+```{r timestamp, echo=FALSE}
+rating_year_distance = edx %>% mutate(distance_from_release = rating_datetime - year) %>%
+  group_by(distance_from_release) %>% 
+  summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation=sd(rating))
+rating_year_distance %>% 
+  ggplot(aes(x=distance_from_release, y=Mean_Rating)) + 
+  geom_bar(stat="identity") + 
+  geom_errorbar(aes(ymin = Mean_Rating-Standard_Deviation, ymax = Mean_Rating+Standard_Deviation)) +
+  labs(title = "Mean Rating by Distance of Year of Rating from Year of Release")+
+  ylab("Mean Rating")
+```
+Figure 15: Mean rating by Distance of Year of Rating from Year of Release.
+
+```{r cleanup, echo=FALSE, include=FALSE}
+rm(rating_datetime_counts, rating_year_distance, year_counts)
+```
+##Results
+
+My analysis plan was to test the regression with each variable, and then to combine the most successful variables. I then planned to run this combination model with standardization and regularization.
+
+###Regressions Accounting for Movie Bias
+
+My first variable was the movie itself - we know some movies are better than others, so it would follow that ratings for movies would be biased by the movie.
+```{r b_i, echo=FALSE}
+mu = mean(edx$rating)
+
+movie_avgs <- edx %>% 
+  group_by(movieId) %>% 
+  summarise(b_i = mean(rating - mu))
+
+pred_movie <- validation %>% 
+  left_join(movie_avgs,by='movieId') %>% 
+  mutate(pred = mu + b_i) %>%
+  .$pred
+
+movie_error <- RMSE(pred_movie,validation$rating)
+
+rm(movie_avgs, pred_movie)
 ```
 
-The graph suggests that no orthogonality is obtained. This is to be expected since there is no real difference between the genres in the first column vs. the second vs. the third - we simply arranged them in alphabetical order.
+The resulting model had an RMSE of `r movie_error`.
 
-   Fitting the model
+###Regressions Accounting for User Bias
 
-I chose the k nearest neighbors model because it seemed to be the most appropriate for this dataset - it would learn from other continuous data points nearest to it.
+My next variable was the user themselves - we know that we have different tastes in movies, and are therefore likely to rate certain movies better than others.
+```{r b_u, echo=FALSE}
+user_avgs <- edx %>% 
+  group_by(userId) %>% 
+  summarise(b_u = mean(rating - mu))
 
-Because this is a huge dataset and my personal laptop was unable to run larger sets, I created much smaller train set with only p=0.00005 of the total variables. I also recreated the validation set using the cleaned dataset.
+pred_user <- validation %>% 
+  left_join(user_avgs,by='userId') %>% 
+  mutate(pred = mu + b_u) %>%
+  .$pred
 
-```{r edx echo=FALSE}
-validation = edx_clean[test_index,]
-validation <- validation %>% 
-  semi_join(edx_clean, by = "movieId") %>%
-  semi_join(edx_clean, by = "userId")
+user_error <- RMSE(pred_user,validation$rating)
 
-#Create test and train sets
-set.seed(1)
-# if using R 3.5 or earlier, use `set.seed(1)` instead
-test_index <- createDataPartition(y = edx_clean$rating, times = 1, p = 0.99995, list = FALSE)
-train <- edx_clean[-test_index,]
-test <- edx_clean[test_index,]
+rm(user_avgs, pred_user)
+```
 
-model <- c("knn")
-set.seed(1)
-fit <- train(rating ~ ., method = "knn", data = train)
+The resulting model had an RMSE of `r user_error`.
 
-pred <- predict(fit, validation)
+###Regressions Accounting for Genre Bias
 
-cv <- confusionMatrix(factor(pred), validation$rating)$overall["Accuracy"]
+```{r b_g, echo=FALSE}
+genre_avgs <- edx %>% 
+  group_by(genres) %>% 
+  summarise(b_g = mean(rating - mu))
+
+pred_genre <- validation %>% 
+  left_join(genre_avgs,by='genres') %>% 
+  mutate(pred = mu + b_g) %>%
+  .$pred
+
+genre_error <- RMSE(pred_genre,validation$rating, na.rm=TRUE)
+
+rm(genre_avgs, pred_genre)
+```
+
+###Regressions Accounting for Year Bias
+
+```{r b_y, echo=FALSE}
+year_avgs <- edx %>% 
+  group_by(year) %>% 
+  summarise(b_y = mean(rating - mu))
+
+pred_year <- validation %>% 
+  mutate(year = as.numeric(substr(substrR(substrR(validation$title, 6),5),1,4))) %>%
+  left_join(year_avgs,by='year') %>% 
+  mutate(pred = mu + b_y) %>%
+  .$pred
+
+year_error <- RMSE(pred_year,validation$rating)
+
+rm(year_avgs, pred_year)
+```
+
+The resulting model had an RMSE of `r year_error`.
+
+###Regressions Accounting for Time Bias
+
+```{r b_t, echo=FALSE}
+time_avgs <- edx %>% 
+  group_by(rating_datetime) %>% 
+  summarise(b_t = mean(rating - mu))
+
+pred_time <- validation %>% 
+  mutate(rating_datetime = year(as_datetime(timestamp))) %>%
+  left_join(time_avgs,by='rating_datetime') %>% 
+  mutate(pred = mu + b_t) %>%
+  .$pred
+
+time_error <- RMSE(pred_time,validation$rating)
+
+rm(time_avgs, pred_time)
+```
+
+The resulting model had an RMSE of `r time_error`.
+
+###Regressions Accounting for Distance between Year of Release and Year of Rating Bias
+
+```{r b_y_t, echo=FALSE}
+year_time_avgs <- edx %>% 
+  mutate(distance_from_release = rating_datetime - year) %>%
+  group_by(distance_from_release) %>% 
+  summarise(b_y_t = mean(rating - mu))
+
+pred_year_time <- validation %>% 
+  mutate(year = as.numeric(substr(substrR(substrR(validation$title, 6),5),1,4))) %>%
+  mutate(rating_datetime = year(as_datetime(timestamp))) %>%
+  mutate(distance_from_release = rating_datetime - year) %>%
+  left_join(year_time_avgs,by='distance_from_release') %>% 
+  mutate(pred = mu + b_y_t) %>%
+  .$pred
+
+year_time_error <- RMSE(pred_year_time,validation$rating)
+
+rm(year_time_avgs, pred_year_time)
+```
+
+The resulting model had an RMSE of `r year_time_error`.
+
+The best models were the ones that took into account movie bias, user bias, and genre bias.
+
+###Regressions Combining Movie, User and Genre Bias
+
+```{r b_i_u_g, echo=FALSE}
+movie_avgs <- edx %>% 
+  group_by(movieId) %>% 
+  summarise(b_i = mean(rating - mu, na.rm = TRUE))
+
+user_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  group_by(userId) %>% 
+  summarise(b_u = mean(rating - mu - b_i, na.rm = TRUE))
+
+genre_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  group_by(genres) %>% 
+  summarise(b_g = mean(rating - mu - b_i - b_u, na.rm = TRUE))
+
+pred_combo <- validation %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  left_join(genre_avgs, by='genres') %>%
+  mutate(pred = rowSums(as.matrix(mu + b_i + b_u + b_g), na.rm=TRUE)) %>%
+  .$pred
+
+combo_error <- RMSE(pred_combo,validation$rating)
+
+rm(movie_avgs, user_avgs, genre_avgs, pred_combo)
+```
+
+The resulting model had an RMSE of `r combo_error`.
+
+
+###Regressions with Standardization
+
+```{r b_s, echo=FALSE}
 
 ```
 
-This led to an accuracy of `mean(cv)`.
+###Regressions with Regulatization
 
+```{r b_l, echo=FALSE}
 
-```{r movielens echo=FALSE}
-library(Metrics)
-RMSE = rmse(validation$rating, pred)
 ```
-The knn model also yielded an RMSE of `RMSE`
 
+###RMSE Table
 
-Results
+All RMSEs are listed in table 6.
+```{r rmse echo=FALSE}
+RMSE_table = data.frame(model = c('Movie Bias', 'User Bias', 'Genre Bias', 'Time Bias', 'Year Bias', 'Standardization', 'Regularization'), RMSE = c(movie_error, user_error, genre_error, time_error, year_error, standardization, regularization))
 
+```
+Table 6: RMSEs across all models
 
-Based on the theoretical applicability of the knn model, I ran it on a much smaller training dataset. The accuracy was `mean(cv)`, while the RMSE of the method was `RMSE`
+Based on the theoretical applicability of the knn model, the best regression model is
 
-Conclusion
+##Conclusion
 
 I conclude that previous ratings combined with genres provide quite an accurate prediction of viewer's movie preferences and can be used effectively to successfully predict target audience of a movie as well as movie recommendations for a viewer.
