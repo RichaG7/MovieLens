@@ -538,8 +538,10 @@ The resulting model had an RMSE of `r time_error`.
 ###Regressions Accounting for Distance between Year of Release and Year of Rating Bias
 
 ```{r b_y_t, echo=FALSE}
+edx = edx %>% 
+  mutate(distance_from_release = rating_datetime - year)
+
 year_time_avgs <- edx %>% 
-  mutate(distance_from_release = rating_datetime - year) %>%
   group_by(distance_from_release) %>% 
   summarise(b_y_t = mean(rating - mu))
 
@@ -562,6 +564,31 @@ The best models were the ones that took into account movie bias, user bias, and 
 
 ###Regressions Combining Movie, User and Genre Bias
 
+Of all the variables that impact ratings, movie bias and user bias are the most essential. Therefore, I added these to our regression model
+```{r b_i_u_g, echo=FALSE}
+movie_avgs <- edx %>% 
+  group_by(movieId) %>% 
+  summarise(b_i = mean(rating - mu, na.rm = TRUE))
+
+user_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  group_by(userId) %>% 
+  summarise(b_u = mean(rating - mu - b_i, na.rm = TRUE))
+
+pred_um_combo <- validation %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  mutate(pred = rowSums(as.matrix(mu + b_i + b_u), na.rm=TRUE)) %>%
+  .$pred
+
+um_combo_error <- RMSE(pred_um_combo,validation$rating)
+
+rm(movie_avgs, user_avgs, pred_um_combo)
+```
+
+The resulting model had an RMSE of `r um_combo_error`.
+
+###Regressions Combining Movie, User and Genre Bias
 ```{r b_i_u_g, echo=FALSE}
 movie_avgs <- edx %>% 
   group_by(movieId) %>% 
@@ -578,38 +605,228 @@ genre_avgs <- edx %>%
   group_by(genres) %>% 
   summarise(b_g = mean(rating - mu - b_i - b_u, na.rm = TRUE))
 
-pred_combo <- validation %>% 
+pred_umg_combo <- validation %>% 
   left_join(movie_avgs, by='movieId') %>%
   left_join(user_avgs, by='userId') %>%
   left_join(genre_avgs, by='genres') %>%
   mutate(pred = rowSums(as.matrix(mu + b_i + b_u + b_g), na.rm=TRUE)) %>%
   .$pred
 
-combo_error <- RMSE(pred_combo,validation$rating)
+umg_combo_error <- RMSE(pred_umg_combo,validation$rating)
 
-rm(movie_avgs, user_avgs, genre_avgs, pred_combo)
+rm(movie_avgs, user_avgs, genre_avgs, pred_umg_combo)
 ```
 
-The resulting model had an RMSE of `r combo_error`.
+Adding genre to the mix, we see the RMSE worsen to `r umg_combo_error`.
 
+###Regressions Combining Movie, User and Year of Release Bias
+```{r b_i_u_g, echo=FALSE}
+movie_avgs <- edx %>% 
+  group_by(movieId) %>% 
+  summarise(b_i = mean(rating - mu, na.rm = TRUE))
+
+user_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  group_by(userId) %>% 
+  summarise(b_u = mean(rating - mu - b_i, na.rm = TRUE))
+
+year_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  group_by(year) %>% 
+  summarise(b_y = mean(rating - mu - b_i - b_u, na.rm = TRUE))
+
+pred_umy_combo <- validation %>% 
+  mutate(year = as.numeric(substr(substrR(substrR(validation$title, 6),5),1,4))) %>%
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  left_join(year_avgs, by='year') %>%
+  mutate(pred = rowSums(as.matrix(mu + b_i + b_u + b_y), na.rm=TRUE)) %>%
+  .$pred
+
+umy_combo_error <- RMSE(pred_umy_combo,validation$rating)
+
+rm(movie_avgs, user_avgs, year_avgs, pred_umy_combo)
+```
+
+So we took out genre and added year of release to the mix, and we saw the RMSE better to `r umy_combo_error`.
+
+###Regressions Combining Movie, User and Time of Rating Bias
+```{r b_i_u_g, echo=FALSE}
+movie_avgs <- edx %>% 
+  group_by(movieId) %>% 
+  summarise(b_i = mean(rating - mu, na.rm = TRUE))
+
+user_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  group_by(userId) %>% 
+  summarise(b_u = mean(rating - mu - b_i, na.rm = TRUE))
+
+time_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  group_by(rating_datetime) %>% 
+  summarise(b_t = mean(rating - mu - b_i - b_u, na.rm = TRUE))
+
+pred_umt_combo <- validation %>% 
+  mutate(rating_datetime = year(as_datetime(timestamp))) %>%
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  left_join(time_avgs, by='rating_datetime') %>%
+  mutate(pred = rowSums(as.matrix(mu + b_i + b_u + b_t), na.rm=TRUE)) %>%
+  .$pred
+
+umt_combo_error <- RMSE(pred_umt_combo,validation$rating)
+
+rm(movie_avgs, user_avgs, time_avgs, pred_umt_combo)
+```
+
+So we took out genre and added year of release to the mix, and we saw the RMSE better to `r umt_combo_error`.
+
+###Regressions Combining Movie, User and Difference between Time of Rating and Year of Release Bias
+```{r b_i_u_g, echo=FALSE}
+movie_avgs <- edx %>% 
+  group_by(movieId) %>% 
+  summarise(b_i = mean(rating - mu, na.rm = TRUE))
+
+user_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  group_by(userId) %>% 
+  summarise(b_u = mean(rating - mu - b_i, na.rm = TRUE))
+
+year_time_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  group_by(distance_from_release) %>% 
+  summarise(b_y_t = mean(rating - mu - b_i - b_u, na.rm = TRUE))
+
+pred_umyt_combo <- validation %>% 
+  mutate(year = as.numeric(substr(substrR(substrR(validation$title, 6),5),1,4))) %>%
+  mutate(rating_datetime = year(as_datetime(timestamp))) %>%
+  mutate(distance_from_release = rating_datetime - year) %>%
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  left_join(year_time_avgs,by='distance_from_release') %>% 
+  mutate(pred = rowSums(as.matrix(mu + b_i + b_u + b_y_t), na.rm=TRUE)) %>%
+  .$pred
+
+umyt_combo_error <- RMSE(pred_umyt_combo,validation$rating)
+
+rm(movie_avgs, user_avgs, year_time_avgs, pred_umyt_combo)
+```
+
+This was the most successful model so far, and the RMSE bettered to `r umyt_combo_error`. Therefore I decided to use only this model for standardization and regularization tests.
 
 ###Regressions with Standardization
 
+What happens if we standardize ratings within users and movies, such that ratings by each user fell on a normal curve, as did ratings for each movie?
 ```{r b_s, echo=FALSE}
 
+a = unique(edx$userId)
+
+edx = edx %>% mutate(scaled_rating_user = unlist(lapply(a, function(a){
+  normalize(edx$rating[which(edx$userId == a)], method = "range", range = c(0, 5))
+})))
+
+edx = edx[order(edx$movieId),]
+b = unique(edx$movieId)
+
+edx = edx %>% mutate(scaled_rating_movie = unlist(lapply(b, function(b){
+  normalize(edx$rating[which(edx$movieId == b)], method = "range", range = c(0, 5))
+})))
+
+edx[order(edx$distance_from_release),]
+c = unique(edx$distance_from_release)
+
+edx = edx %>% mutate(scaled_rating_year = unlist(lapply(c, function(c){
+  normalize(edx$rating[which(edx$distance_from_release == c)], method = "range", range = c(0, 5))
+})))
+
+mu_user = mean(edx$scaled_rating_user, na.rm = TRUE)
+mu_movie = mean(edx$scaled_rating_movie, na.rm = TRUE)
+mu_year = mean(edx$scaled_rating_year, na.rm = TRUE)
+
+movie_avgs <- edx %>% 
+  group_by(movieId) %>% 
+  summarise(b_i = mean(scaled_rating_movie - mu_movie, na.rm = TRUE))
+
+user_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  group_by(userId) %>% 
+  summarise(b_u = mean(scaled_rating_user - mu_user - b_i, na.rm = TRUE))
+
+year_time_avgs <- edx %>% 
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  group_by(distance_from_release) %>% 
+  summarise(b_y_t = mean(scaled_rating_year - mu_year - b_i - b_u, na.rm = TRUE))
+
+pred_umyt_combo <- validation %>% 
+  mutate(year = as.numeric(substr(substrR(substrR(validation$title, 6),5),1,4))) %>%
+  mutate(rating_datetime = year(as_datetime(timestamp))) %>%
+  mutate(distance_from_release = rating_datetime - year) %>%
+  left_join(movie_avgs, by='movieId') %>%
+  left_join(user_avgs, by='userId') %>%
+  left_join(year_time_avgs,by='distance_from_release') %>% 
+  mutate(pred = rowSums(as.matrix(mu + b_i + b_u + b_y_t), na.rm=TRUE)) %>%
+  .$pred
+
+s_error <- RMSE(pred_umyt_combo,validation$rating)
+
+rm(movie_avgs, user_avgs, year_time_avgs, pred_umyt_combo, a, b, c)
 ```
 
-###Regressions with Regulatization
+The RMSE with standardization of ratings was quite high. One explanation can be that standardization is not helpful for predicting real ratings because real ratings are not standardized. However, for modeling movie recommendations (i.e., categorical recommendations), standardization may be helpful.
 
+###Regressions with Regularization
 ```{r b_l, echo=FALSE}
 
+lambda_reg <- seq(1,10,0.25)
+
+pred_umyt_combo_rmses = sapply(lambda_reg,function(l){
+  movie_avgs <- edx %>% 
+    group_by(movieId) %>% 
+    summarise(b_i = sum(rating - mu, na.rm = TRUE)/n()+l)
+
+  user_avgs <- edx %>% 
+    left_join(movie_avgs, by='movieId') %>%
+    group_by(userId) %>% 
+    summarise(b_u = sum(rating - mu - b_i, na.rm = TRUE)/n()+l)
+
+  year_time_avgs <- edx %>% 
+    left_join(movie_avgs, by='movieId') %>%
+    left_join(user_avgs, by='userId') %>%
+    group_by(distance_from_release) %>% 
+    summarise(b_y_t = mean(rating - mu - b_i - b_u, na.rm = TRUE))
+
+  pred_umyt_combo <- validation %>% 
+    mutate(year = as.numeric(substr(substrR(substrR(validation$title, 6),5),1,4))) %>%
+    mutate(rating_datetime = year(as_datetime(timestamp))) %>%
+    mutate(distance_from_release = rating_datetime - year) %>%
+    left_join(movie_avgs, by='movieId') %>%
+    left_join(user_avgs, by='userId') %>%
+    left_join(year_time_avgs,by='distance_from_release') %>% 
+    mutate(pred = rowSums(as.matrix(mu + b_i + b_u + b_y_t), na.rm=TRUE)) %>%
+    .$pred
+  
+  return(RMSE(pred_umyt_combo,validation$rating))
+})
+
+r_error = pred_umyt_combo_rmses[which.min(pred_umyt_combo_rmses)]
+r_error_lambda = lambda_reg[which.min(pred_umyt_combo_rmses)]
+
+rm(pred_umyt_combo_rmses)
 ```
+
+The best RMSE was `r r_error` at a lambda value of `r r_error_lambda`. Therefore, regularization did no better than the combined user-movie-distance from release combined model's error.
 
 ###RMSE Table
 
 All RMSEs are listed in table 6.
 ```{r rmse echo=FALSE}
-RMSE_table = data.frame(model = c('Movie Bias', 'User Bias', 'Genre Bias', 'Time Bias', 'Year Bias', 'Standardization', 'Regularization'), RMSE = c(movie_error, user_error, genre_error, time_error, year_error, standardization, regularization))
+RMSE_table = data.frame(model = c('Movie Bias', 'User Bias', 'Genre Bias', 'Time Bias', 'Year Bias', 'Year of Release vs Time of Rating bias', 'User-Movie Combo', 'User-Movie-Genre Combo', 'User-Movie-Year of Release Combo',  'User-Movie-Time of Rating Combo', 'User-Movie-Distance from Release Combo', 'Standardization', 'Regularization'), RMSE = c(movie_error, user_error, genre_error, time_error, year_error, year_time_error, um_combo_error, umg_combo_error, umy_combo_error, umt_combo_error, umyt_combo_error, s_error, r_error))
+
+RMSE_table
 
 ```
 Table 6: RMSEs across all models
@@ -618,4 +835,4 @@ Based on the theoretical applicability of the knn model, the best regression mod
 
 ##Conclusion
 
-I conclude that previous ratings combined with genres provide quite an accurate prediction of viewer's movie preferences and can be used effectively to successfully predict target audience of a movie as well as movie recommendations for a viewer.
+I conclude that movie, user and distance from release are the best predictors of ratings. By predicting ratings, we can effectively and successfully predict target audience of a movie as well as movie recommendations for a viewer.
