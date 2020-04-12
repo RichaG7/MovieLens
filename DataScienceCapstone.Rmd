@@ -1,13 +1,16 @@
 ---
 title: "MovieLens Project"
 author: "Richa Gautam"
-date: "3/28/2020"
-output: html_document
+date: "4/11/2020"
+geometry: margin=1in
+output: pdf_document
 ---
 #Utilizing the Movielens Database to Predict Movie Preferences
 
 
 ```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=6, fig.align = "center") 
+
 ################################
 # Create edx set, validation set
 ################################
@@ -144,14 +147,14 @@ head(edx)
 ####User Effects
 
 Movie ratings will be impacted by the user, as users have different tastes and some users are likely to rate movies more highly on average than others. Table 1 shows the mean rating and standard deviation for the first 6 userIds.
-```{r usereffects, echo=FALSE}
+```{r usereffects1, echo=FALSE}
 head(edx %>% group_by(userId) %>% summarise(Users_Rated=n(), Mean_Rating=mean(rating), SD_Rating=sd(rating))
 )
 ```
 Table 1: Mean rating and standard deviation for the first 6 userIds.
 
 Figure 1 visualizes the number of ratings for the first 100 userIds.
-```{r usereffects, echo=FALSE}
+```{r usereffects2, echo=FALSE, fig.align = "center"}
 user_counts = edx %>% group_by(userId) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation = sd(rating))
 user_counts[1:100,] %>% 
   ggplot(aes(x=userId, y=Movies_Rated)) + 
@@ -162,8 +165,8 @@ user_counts[1:100,] %>%
 Figure 1: Number of Movies rated by first 100 userIds.
 
 In figure 2, we can see the change in mean rating, and the standard deviation (as errorbars) in ratings, for the first 100 userIds.
-```{r usereffects, echo=FALSE}
-user_ratings[1:100,] %>% 
+```{r usereffects3, echo=FALSE, fig.align = "center"}
+user_counts[1:100,] %>% 
   ggplot(aes(x=userId, y=Mean_Rating)) + 
   geom_bar(stat="identity") + 
   geom_errorbar(aes(ymin = Mean_Rating-Standard_Deviation, ymax = Mean_Rating+Standard_Deviation)) +
@@ -177,17 +180,17 @@ Figure 2: Mean rating by first 100 userIds.
 ####Movie Effects
 
 Movie ratings will also be impacted by the movie itself, as some movies are better than others. Table 2 shows the mean rating and standard deviation for the first 6 movieIds.
-```{r movieeffects, echo=FALSE}
+```{r movieeffects1, echo=FALSE}
 head(edx %>% group_by(movieId) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation=sd(rating))
 )
 ```
 Table 2: Mean rating and standard deviation for the first 6 movieIds
 
 Figure 3 visualizes the number of ratings for the first 100 movieIds
-```{r movieeffects, echo=FALSE}
-movie_counts = edx %>% group_by(movieIds) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation = sd(rating))
+```{r movieeffects2, echo=FALSE, fig.align = "center"}
+movie_counts = edx %>% group_by(movieId) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation = sd(rating))
 movie_counts[1:100,] %>% 
-  ggplot(aes(x=userId, y=Movies_Rated)) + 
+  ggplot(aes(x=movieId, y=Movies_Rated)) + 
   geom_bar(stat="identity") + 
   labs(title = "Number of Ratings for Each Movie")+
   ylab("Number of Movies Rated")
@@ -195,9 +198,9 @@ movie_counts[1:100,] %>%
 Figure 3: Number of Movies rated by first 100 movieIds
 
 In figure 4, we can see the change in mean rating, and the standard deviation (as errorbars) in ratings, for the first 100 movieIds
-```{r movieeffects, echo=FALSE}
-movie_ratings[1:100,] %>% 
-  ggplot(aes(x=userId, y=Mean_Rating)) + 
+```{r movieeffects3, echo=FALSE, fig.align = "center"}
+movie_counts[1:100,] %>% 
+  ggplot(aes(x=movieId, y=Mean_Rating)) + 
   geom_bar(stat="identity") + 
   geom_errorbar(aes(ymin = Mean_Rating-Standard_Deviation, ymax = Mean_Rating+Standard_Deviation)) +
   labs(title = "Mean Rating by Movie") +
@@ -209,17 +212,17 @@ Figure 4: Mean rating by first 100 movieIds
 
 ####Genre Relationships
 
-Movie ratings may be impacted by the genre of the movies. However, each movie may belong to multiple genres. To see if there was a correlation between the genres, I did a Pearson-r correlation with a significance test on the genre matrix. The significance of  correlation is visualized in Figure 5.
+Movie ratings may be impacted by the genre of the movies. However, each movie may belong to multiple genres. To see if there was a correlation between the genres, I did a Pearson-r correlation on the genre matrix. The correlations are visualized in Figure 5.
 
-```{r genreeffects, echo=FALSE}
-genre_matrix = edx[,c(6:23)]
+```{r genreeffects1, echo=FALSE, fig.align = "center"}
+genre_matrix = edx[,c(7:24)]
 cor_t = rcorr(as.matrix(genre_matrix), type="pearson")
-cor_t_p = cor_t$P
-corrplot(cor_t_p, method = "color", type = "upper")
+cor_t_r = cor_t$r
+corrplot(cor_t_r, method = "color", type = "upper")
 ```
 Figure 5: Significance of correlation between the genres
 
-Correlations between XXX were significant.
+As we can see, the correlations are quite weak.
 
 For correlation lower than -0.1975513 (mean-sd), we have Comedy-Drama, Horror-Drama, and Comedy-Thriller, meaning these genres overlap the least.
 
@@ -227,17 +230,32 @@ For correlation greater than 0.2929194 (mean + sd), we have Animation-Children, 
 
 ####Genre Effects
 
-Given the correlation of genres with ratings, movie ratings will also be impacted by the movie's genres. Table 3 shows the mean rating and standard deviation for each genre. Plotting significance of correlation between ratings and genres, we see no significant interactions (Figure 6). This suggests that individual genres do not have an impact on ratings.
-```{r genreeffects, echo=FALSE}
-genre_matrix = edx[,c(3,6:23)]
+Given the correlation of genres with ratings, movie ratings will also be impacted by the movie's genres. Table 3 shows the mean rating and standard deviation for each genre. Plotting correlation between ratings and genres, we see no major interactions (Figure 6) - none of the correlation coefficients exceed 0.2 in either direction. This suggests that individual genres do not have an impact on ratings.
+```{r genreeffects2, echo=FALSE, fig.align = "center"}
+rm(cor_t, cor_t_r)
+
+genre_matrix = edx[,c(3,7:24)]
 cor_t = rcorr(as.matrix(genre_matrix), type="pearson")
-corrplot(cor_t$p, method = "color", type = "upper")
+
+cor_t_r = cor_t$r
+cor_t_r = as.data.frame(cor_t_r[-1,1])
+cor_t_r$genre <- row.names(cor_t_r)
+colnames(cor_t_r) <- c("coef","genre")
+
+cor_t_r %>% 
+  ggplot(aes(x=genre, y=coef)) + 
+  geom_bar(stat = 'identity') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  labs(title = "Coefficients of Correlation between Genre and Rating") +
+  ylab("Coefficients")
 ```
 Figure 6: Correlation between genres and ratings.
 
 And plotting mean ratings for genre, we see bias by genres as well.
-```{r genreeffects, echo=FALSE}
-genre_matrix = edx[,c(1,2,3,6:23)]
+```{r genreeffects3, echo=FALSE}
+rm(cor_t, cor_t_r)
+
+genre_matrix = edx[,c(1,2,3,7:24)]
 
 genre_counts = genre_matrix %>% 
   gather('genre', 'present', -c(userId, movieId, rating)) %>%
@@ -249,7 +267,7 @@ genre_counts
 Table 3: Mean rating and standard deviation for each genre.
 
 Figure 7 visualizes the number of movies in each genre.
-```{r genreeffects, echo=FALSE}
+```{r genreeffects4, echo=FALSE, fig.align = "center"}
 genre_counts %>% 
   ggplot(aes(x=genre, y=Movies_Rated)) + 
   geom_bar(stat="identity") + 
@@ -260,7 +278,7 @@ genre_counts %>%
 Figure 7: Number of Movies rated in each genre.
 
 In figure 8, we can see the change in mean rating and the standard deviation (as errorbars) in ratings for all genres.
-```{r genreeffects, echo=FALSE}
+```{r genreeffects5, echo=FALSE, fig.align = "center"}
 genre_counts %>% 
   ggplot(aes(x=genre, y=Mean_Rating)) + 
   geom_bar(stat="identity") + 
@@ -274,7 +292,7 @@ Figure 8: Mean rating and standard deviation for all genres.
 ###Genre Combination
 
 However, the combination of genres a movie falls into may be more important than the discrete genres it is part of. Figure 9 visualizes the mean rating by genre combination for 50 top-rated genre combinations.
-```{r genrecombo, echo=FALSE}
+```{r genrecombo1, echo=FALSE, fig.align = "center"}
 
 genre_matrix = edx[,c(1,2,3,6:23)]
 
@@ -312,8 +330,8 @@ rm(genre_matrix1, genre_matrix2, genre_matrix3)
 Figure 9: Mean Rating by genre combination for 50 top-rated genre combinations.
 
 In Figure 10 we see the distribution for the 50 least rated genre combinations
-```{r genrecombo, echo=FALSE}
-genre_counts[nrow(genre_counts)-50:nrow(genre_counts),] %>% 
+```{r genrecombo2, echo=FALSE, fig.align = "center"}
+genre_counts[(nrow(genre_counts)-50):nrow(genre_counts),] %>% 
   ggplot(aes(x=genres, y=Mean_Rating)) + 
   geom_bar(stat="identity") + 
   geom_errorbar(aes(ymin = Mean_Rating-Standard_Deviation, ymax = Mean_Rating+Standard_Deviation)) +
@@ -325,11 +343,11 @@ genre_counts[nrow(genre_counts)-50:nrow(genre_counts),] %>%
 Figure 10: Mean Rating by genre combination for 50 least-rated genre combinations.
 
 Correlating the genre combinations with ratings, we see
-```{r genrecombo, echo=FALSE}
+```{r genrecombo3, echo=FALSE, fig.align = "center"}
 edx = edx %>% 
-  left_join(genre_matrix, by=c('userId', 'movieId'))
+  left_join(genre_matrix[,1:3], by=c('userId', 'movieId'))
 
-genre_corplot = edx[,c(3,26)]
+genre_corplot = edx[,c(3,27)]
 
 genre_corplot  = genre_corplot %>% 
   mutate(present = 1) %>%
@@ -349,20 +367,20 @@ Figure 11: Correlation of Genre Combination with Ratings.
 
 Of the `r nrow(genre_counts)` unique genre combinations, `r sum(cor_t_p[1,]< 0.05, na.rm = TRUE)` of them were significantly correlating with ratings. This suggests a much stronger relationship between genre combinations and rating. Therefore, I will use genre bias from the genre combinations in the regression.
 
-```{r genresig, echo=FALSE}
-rm(cor_t, cor_t_p, genre_corplot, genre_matrix)
+```{r genresig1, echo=FALSE}
+rm(cor_t, cor_t_p, genre_corplot, genre_matrix, genre_counts)
 ```
 ####Year of Release Effects
 
 The year of a movie's release may affect ratings as well. Old movies may be rated more highly because they are considered classics. On the other hand, there will also be fewer movies in the early years, which could lead to the ratings having higher variance. Table 4 shows the mean rating and standard deviation for the first 10 movieIds.
-```{r year, echo=FALSE}
+```{r year1, echo=FALSE}
 head(edx %>% group_by(year) %>% summarise(Number_of_Ratings=n(), Mean_Rating=mean(rating), SD_Rating=sd(rating))
 )
 ```
 Table 4: Mean rating and standard deviation for movies by Year
 
 Figure 12 visualizes the number of movies rated for each year of release.
-```{r year, echo=FALSE}
+```{r year2, echo=FALSE, fig.align = "center"}
 year_counts = edx %>% group_by(year) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation = sd(rating))
 year_counts %>% 
   ggplot(aes(x=year, y=Movies_Rated)) + 
@@ -373,7 +391,7 @@ year_counts %>%
 Figure 12: Number of Movies rated for each year of release.
 
 In figure 13, we can see the change in mean rating, and the standard deviation (as errorbars) in ratings, for each year of rellease.
-```{r year, echo=FALSE}
+```{r year3, echo=FALSE, fig.align = "center"}
 year_counts %>% 
   ggplot(aes(x=year, y=Mean_Rating)) + 
   geom_bar(stat="identity") + 
@@ -386,14 +404,16 @@ Figure 13: Mean rating by first 1000 userIds.
 ####Time of Rating Effects
 
 Are ratings affected by the year of rating? Table 5 shows the mean rating and standard deviation for the first 6 years.
-```{r timestamp, echo=FALSE}
+```{r timestamp1, echo=FALSE}
+rm(year_counts)
+
 head(edx %>% group_by(rating_datetime) %>% summarise(Movies_Rated=n(), Mean_Rating=mean(rating), SD_Rating=sd(rating))
 )
 ```
 Table 5: Mean rating and standard deviation for the first 6 years of rating
 
 Figure 14 visualizes the number of ratings for each year of rating.
-```{r timestamp, echo=FALSE}
+```{r timestamp2, echo=FALSE, fig.align = "center"}
 rating_datetime_counts = edx %>% group_by(rating_datetime) %>% 
   summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation=sd(rating))
 rating_datetime_counts %>% 
@@ -405,7 +425,7 @@ rating_datetime_counts %>%
 Figure 14: Number of Movies rated Year of Rating.
 
 In figure 15, we can see the change in mean rating, and the standard deviation (as errorbars) in ratings, for each year of rating.
-```{r timestamp, echo=FALSE}
+```{r timestamp3, echo=FALSE, fig.align = "center"}
 rating_datetime_counts %>% 
   ggplot(aes(x=rating_datetime, y=Mean_Rating)) + 
   geom_bar(stat="identity") + 
@@ -416,7 +436,7 @@ rating_datetime_counts %>%
 Figure 15: Mean rating by Year of Rating.
 
 The figures who little impact of year. Digging in deeper, I created another variable - distance_from_release - that calculated how long after the release of a movie was it rated by a user. Plotting the mean and standard deviation for this, we see similar plateauing (Figure 16).
-```{r timestamp, echo=FALSE}
+```{r timestamp4, echo=FALSE, fig.align = "center"}
 rating_year_distance = edx %>% mutate(distance_from_release = rating_datetime - year) %>%
   group_by(distance_from_release) %>% 
   summarise(Movies_Rated=n(), Mean_Rating=mean(rating), Standard_Deviation=sd(rating))
@@ -430,7 +450,7 @@ rating_year_distance %>%
 Figure 15: Mean rating by Distance of Year of Rating from Year of Release.
 
 ```{r cleanup, echo=FALSE, include=FALSE}
-rm(rating_datetime_counts, rating_year_distance, year_counts)
+rm(rating_datetime_counts, rating_year_distance)
 ```
 ##Results
 
@@ -565,7 +585,7 @@ The best models were the ones that took into account movie bias, user bias, and 
 ###Regressions Combining Movie, User and Genre Bias
 
 Of all the variables that impact ratings, movie bias and user bias are the most essential. Therefore, I added these to our regression model
-```{r b_i_u_g, echo=FALSE}
+```{r b_i_u, echo=FALSE}
 movie_avgs <- edx %>% 
   group_by(movieId) %>% 
   summarise(b_i = mean(rating - mu, na.rm = TRUE))
@@ -620,7 +640,7 @@ rm(movie_avgs, user_avgs, genre_avgs, pred_umg_combo)
 Adding genre to the mix, we see the RMSE worsen to `r umg_combo_error`.
 
 ###Regressions Combining Movie, User and Year of Release Bias
-```{r b_i_u_g, echo=FALSE}
+```{r b_i_u_y, echo=FALSE}
 movie_avgs <- edx %>% 
   group_by(movieId) %>% 
   summarise(b_i = mean(rating - mu, na.rm = TRUE))
@@ -652,7 +672,7 @@ rm(movie_avgs, user_avgs, year_avgs, pred_umy_combo)
 So we took out genre and added year of release to the mix, and we saw the RMSE better to `r umy_combo_error`.
 
 ###Regressions Combining Movie, User and Time of Rating Bias
-```{r b_i_u_g, echo=FALSE}
+```{r b_i_u_t, echo=FALSE}
 movie_avgs <- edx %>% 
   group_by(movieId) %>% 
   summarise(b_i = mean(rating - mu, na.rm = TRUE))
@@ -684,7 +704,7 @@ rm(movie_avgs, user_avgs, time_avgs, pred_umt_combo)
 So we took out genre and added year of release to the mix, and we saw the RMSE better to `r umt_combo_error`.
 
 ###Regressions Combining Movie, User and Difference between Time of Rating and Year of Release Bias
-```{r b_i_u_g, echo=FALSE}
+```{r b_i_u_y_t, echo=FALSE}
 movie_avgs <- edx %>% 
   group_by(movieId) %>% 
   summarise(b_i = mean(rating - mu, na.rm = TRUE))
@@ -735,7 +755,7 @@ edx = edx %>% mutate(scaled_rating_movie = unlist(lapply(b, function(b){
   normalize(edx$rating[which(edx$movieId == b)], method = "range", range = c(0, 5))
 })))
 
-edx[order(edx$distance_from_release),]
+edx = edx[order(edx$distance_from_release),]
 c = unique(edx$distance_from_release)
 
 edx = edx %>% mutate(scaled_rating_year = unlist(lapply(c, function(c){
@@ -779,59 +799,67 @@ rm(movie_avgs, user_avgs, year_time_avgs, pred_umyt_combo, a, b, c)
 The RMSE with standardization of ratings was quite high. One explanation can be that standardization is not helpful for predicting real ratings because real ratings are not standardized. However, for modeling movie recommendations (i.e., categorical recommendations), standardization may be helpful.
 
 ###Regressions with Regularization
+
+We then checked the RMSE with regularization. When keeping year in the mix, the RMSE did not improve with regularization (Figure 16).
 ```{r b_l, echo=FALSE}
 
-lambda_reg <- seq(1,10,0.25)
+lambda_reg <- seq(0,10,0.25)
 
 pred_umyt_combo_rmses = sapply(lambda_reg,function(l){
-  movie_avgs <- edx %>% 
+  mu_r = mean(edx$rating)
+  
+  movie_avgs_reg <- edx %>% 
     group_by(movieId) %>% 
-    summarise(b_i = sum(rating - mu, na.rm = TRUE)/n()+l)
+    summarise(b_i_r = sum(rating - mu_r, na.rm = TRUE)/(n()+l))
 
-  user_avgs <- edx %>% 
-    left_join(movie_avgs, by='movieId') %>%
+  user_avgs_reg <- edx %>% 
+    left_join(movie_avgs_reg, by='movieId') %>%
     group_by(userId) %>% 
-    summarise(b_u = sum(rating - mu - b_i, na.rm = TRUE)/n()+l)
+    summarise(b_u_r = sum(rating - mu_r - b_i_r, na.rm = TRUE)/(n()+l))
 
-  year_time_avgs <- edx %>% 
-    left_join(movie_avgs, by='movieId') %>%
-    left_join(user_avgs, by='userId') %>%
+  year_time_avgs_reg <- edx %>% 
+    left_join(movie_avgs_reg, by='movieId') %>%
+    left_join(user_avgs_reg, by='userId') %>%
     group_by(distance_from_release) %>% 
-    summarise(b_y_t = mean(rating - mu - b_i - b_u, na.rm = TRUE))
+    summarise(b_y_t_r = sum(rating - mu_r - b_i_r - b_u_r, na.rm = TRUE)/(n()+l))
 
-  pred_umyt_combo <- validation %>% 
+  pred_umyt_combo_reg <- validation %>% 
     mutate(year = as.numeric(substr(substrR(substrR(validation$title, 6),5),1,4))) %>%
     mutate(rating_datetime = year(as_datetime(timestamp))) %>%
     mutate(distance_from_release = rating_datetime - year) %>%
-    left_join(movie_avgs, by='movieId') %>%
-    left_join(user_avgs, by='userId') %>%
-    left_join(year_time_avgs,by='distance_from_release') %>% 
-    mutate(pred = rowSums(as.matrix(mu + b_i + b_u + b_y_t), na.rm=TRUE)) %>%
+    left_join(movie_avgs_reg, by='movieId') %>%
+    left_join(user_avgs_reg, by='userId') %>%
+    left_join(year_time_avgs_reg,by='distance_from_release') %>% 
+    mutate(pred = rowSums(as.matrix(mu_r + b_i_r + b_u_r + b_y_t_r), na.rm=TRUE)) %>%
     .$pred
   
-  return(RMSE(pred_umyt_combo,validation$rating))
+  return(RMSE(pred_umyt_combo_reg,validation$rating))
 })
 
+qplot(lambda_reg, pred_umyt_combo_rmses)  
+
+```
+Figure 16: RMSE at different lambdas for the User-Movie-Distance between Year of Rating and Release Model.
+
+```{r}
 r_error = pred_umyt_combo_rmses[which.min(pred_umyt_combo_rmses)]
 r_error_lambda = lambda_reg[which.min(pred_umyt_combo_rmses)]
 
 rm(pred_umyt_combo_rmses)
 ```
-
-The best RMSE was `r r_error` at a lambda value of `r r_error_lambda`. Therefore, regularization did no better than the combined user-movie-distance from release combined model's error.
+The best RMSE was `r r_error` at a lambda value of `r r_error_lambda`. Therefore, regularization improved the combined user-movie-distance-from-release model's predictive ability.
 
 ###RMSE Table
 
 All RMSEs are listed in table 6.
-```{r rmse echo=FALSE}
+```{r rmse, echo=FALSE}
 RMSE_table = data.frame(model = c('Movie Bias', 'User Bias', 'Genre Bias', 'Time Bias', 'Year Bias', 'Year of Release vs Time of Rating bias', 'User-Movie Combo', 'User-Movie-Genre Combo', 'User-Movie-Year of Release Combo',  'User-Movie-Time of Rating Combo', 'User-Movie-Distance from Release Combo', 'Standardization', 'Regularization'), RMSE = c(movie_error, user_error, genre_error, time_error, year_error, year_time_error, um_combo_error, umg_combo_error, umy_combo_error, umt_combo_error, umyt_combo_error, s_error, r_error))
 
+RMSE_table = RMSE_table[order(RMSE_table$RMSE),]
+
 RMSE_table
-
 ```
-Table 6: RMSEs across all models
-
-Based on the theoretical applicability of the knn model, the best regression model is
+Table 6: RMSEs across all models from lowest RMSE to highest RMSE.
 
 ##Conclusion
 
