@@ -582,7 +582,7 @@ The resulting model had an RMSE of `r year_time_error`.
 
 The best models were the ones that took into account movie bias, user bias, and genre bias.
 
-###Regressions Combining Movie, User and Genre Bias
+###Regressions Combining Movie and User Bias
 
 Of all the variables that impact ratings, movie bias and user bias are the most essential. Therefore, I added these to our regression model
 ```{r b_i_u, echo=FALSE}
